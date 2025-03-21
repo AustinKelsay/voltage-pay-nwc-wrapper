@@ -1,122 +1,112 @@
-# Voltage Payments API Wrapper
+# Voltage Pay NWC Wrapper
 
-A TypeScript wrapper for the Voltage Payments API that handles retries, polling, and error handling.
+A TypeScript wrapper for integrating Voltage Pay with Nostr Wallet Connect (NIP-47).
+
+## Features
+
+- Full NIP-47 support
+- Integration with Voltage Pay API
+- Real-time payment notifications
+- TypeScript support
+- Easy-to-use interface
 
 ## Installation
 
 ```bash
-npm install voltage-pay-nwc-wrapper
+npm install nostr-tools @noble/hashes
+```
+
+## Configuration
+
+Create a `.env` file with your Voltage Pay credentials:
+
+```env
+VOLTAGE_API_KEY=your_api_key
+VOLTAGE_ORG_ID=your_org_id
+VOLTAGE_ENV_ID=your_env_id
+VOLTAGE_WALLET_ID=your_wallet_id
 ```
 
 ## Usage
 
 ```typescript
-import { VoltagePayments } from 'voltage-pay-nwc-wrapper';
+import { VoltagePayments } from './src/VoltagePayments';
+import { NWCService } from './src/nwc/NWCService';
+import { generateSecretKey, getPublicKey } from 'nostr-tools';
+import { bytesToHex } from '@noble/hashes/utils';
 
-// Initialize the client
+// Initialize Voltage client
 const voltage = new VoltagePayments({
-  apiKey: 'your-api-key',
-  organizationId: 'your-organization-id',
-  environmentId: 'your-environment-id',
-  // Optional configuration
-  maxRetries: 10, // Default: 10
-  retryDelay: 1000, // Default: 1000ms
+  apiKey: process.env.VOLTAGE_API_KEY!,
+  organizationId: process.env.VOLTAGE_ORG_ID!,
+  environmentId: process.env.VOLTAGE_ENV_ID!
 });
 
-// Create a payment request (receive payment)
-const paymentRequest = await voltage.createPaymentRequest({
-  amount_msats: 10000, // 10 sats
-  wallet_id: 'your-wallet-id',
-  description: 'Test payment',
+// Generate NWC keys
+const secretKey = generateSecretKey();
+const secret = bytesToHex(secretKey);
+const pubkey = getPublicKey(secretKey);
+
+// Initialize NWC service
+const nwc = new NWCService(voltage, {
+  relayUrl: 'wss://relay.damus.io',
+  pubkey,
+  secret,
+  walletId: process.env.VOLTAGE_WALLET_ID!
 });
 
-// Send a payment
-const payment = await voltage.sendPayment({
-  wallet_id: 'your-wallet-id',
-  payment_request: 'lntbs1500n1p...', // Lightning invoice
-  amount_msats: 150000, // 150 sats
-  max_fee_msats: 1000, // Optional: max routing fee
-});
+// Start the service
+await nwc.init();
 
-// Poll payment status with callback
-const result = await voltage.pollPaymentStatus(payment.id, (status) => {
-  console.log(`Payment status: ${status}`);
-});
-
-// Get payment details
-const paymentDetails = await voltage.getPayment(payment.id);
+// Get NWC URI for clients to connect
+const uri = `nostr+walletconnect://${pubkey}?relay=${encodeURIComponent('wss://relay.damus.io')}&secret=${secret}`;
+console.log('NWC URI:', uri);
 ```
 
-## Features
+## Supported Methods
 
-- Automatic retry logic for failed requests
-- Built-in polling for payment status
-- TypeScript support with full type definitions
-- Handles 202 Accepted responses with automatic polling
-- Configurable retry attempts and delay
-- Error handling and status monitoring
+The wrapper supports the following NIP-47 methods:
 
-## API Reference
+- `pay_invoice`: Pay a Lightning invoice
+- `make_invoice`: Create a Lightning invoice
+- `get_balance`: Get wallet balance
+- `get_info`: Get wallet information
 
-### Constructor
+## Example Client Usage
+
+After getting the NWC URI from the service, clients can connect and interact with the wallet:
 
 ```typescript
-new VoltagePayments(config: {
-  apiKey: string;
-  organizationId: string;
-  environmentId: string;
-  baseUrl?: string;
-  maxRetries?: number;
-  retryDelay?: number;
-})
+// Example of paying an invoice
+const request = {
+  method: 'pay_invoice',
+  params: {
+    invoice: 'lnbc...',
+    amount: 1000 // Optional, in millisatoshis
+  }
+};
+
+// The request will be encrypted and sent to the NWC service
+// The service will process it and send back an encrypted response
 ```
 
-### Methods
+## Development
 
-#### createPaymentRequest
+To run the example:
 
-Creates a new payment request (receive payment).
-
-```typescript
-createPaymentRequest(params: {
-  amount_msats: number;
-  wallet_id: string;
-  description?: string;
-}): Promise<PaymentResponse>
+```bash
+npm install
+npm start
 ```
 
-#### sendPayment
+## Contributing
 
-Sends a payment using a Lightning invoice.
-
-```typescript
-sendPayment(params: {
-  wallet_id: string;
-  payment_request: string;
-  amount_msats: number;
-  max_fee_msats?: number;
-}): Promise<PaymentResponse>
-```
-
-#### getPayment
-
-Retrieves payment details by ID.
-
-```typescript
-getPayment(paymentId: string): Promise<PaymentResponse>
-```
-
-#### pollPaymentStatus
-
-Polls payment status until completion or failure.
-
-```typescript
-pollPaymentStatus(
-  paymentId: string,
-  onStatusUpdate?: (status: PaymentResponse['status']) => void
-): Promise<PaymentResponse>
-```
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## License
 
-MIT
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

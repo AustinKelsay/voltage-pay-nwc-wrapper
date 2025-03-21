@@ -51,7 +51,7 @@ interface PaymentData {
 /**
  * Payment response structure from the API
  */
-interface PaymentResponse {
+export interface PaymentResponse {
   bip21_uri?: string;
   created_at: string;
   currency: string;

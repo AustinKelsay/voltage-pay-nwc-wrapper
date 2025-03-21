@@ -16,20 +16,12 @@
  */
 
 import * as dotenv from 'dotenv';
-import path from 'path';
 
-// Try to load environment variables from both .env and .env.local
+// Load environment variables from .env
 try {
-  // Load .env first (if it exists)
   dotenv.config();
-  
-  // Then try to load .env.local (if it exists)
-  dotenv.config({
-    path: path.resolve(process.cwd(), '.env.local'),
-    override: true, // .env.local values override .env values
-  });
 } catch (error) {
-  console.warn('Warning: Could not load environment files:', error);
+  console.warn('Warning: Could not load .env file:', error);
 }
 
 /**
@@ -37,10 +29,10 @@ try {
  */
 interface Config {
   voltage: {
-    apiKey?: string;
-    organizationId?: string;
-    environmentId?: string;
-    walletId?: string;
+    apiKey: string;
+    organizationId: string;
+    environmentId: string;
+    walletId: string;
   };
 }
 
@@ -48,14 +40,14 @@ interface Config {
  * Application configuration object
  * 
  * This object provides type-safe access to environment variables.
- * All values are optional to allow for partial configuration loading.
+ * All values are required and validated on load.
  */
 export const config: Config = {
   voltage: {
-    apiKey: process.env.VOLTAGE_API_KEY,
-    organizationId: process.env.ORGANIZATION_ID,
-    environmentId: process.env.ENVIRONMENT_ID,
-    walletId: process.env.WALLET_ID,
+    apiKey: process.env.VOLTAGE_API_KEY || '',
+    organizationId: process.env.ORGANIZATION_ID || '',
+    environmentId: process.env.ENVIRONMENT_ID || '',
+    walletId: process.env.WALLET_ID || '',
   },
 };
 
@@ -65,6 +57,11 @@ console.log('Configuration loaded:', {
   hasOrganizationId: !!config.voltage.organizationId,
   hasEnvironmentId: !!config.voltage.environmentId,
   hasWalletId: !!config.voltage.walletId,
+  // Log the actual values (first few chars only)
+  apiKey: config.voltage.apiKey.slice(0, 8) + '...',
+  organizationId: config.voltage.organizationId,
+  environmentId: config.voltage.environmentId,
+  walletId: config.voltage.walletId,
 });
 
 // Validate required environment variables
