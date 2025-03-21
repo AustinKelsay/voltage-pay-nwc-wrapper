@@ -22,6 +22,8 @@ export class NWCService {
   private voltage: VoltagePayments;
   private pubkey: string;
   private relay?: Relay;
+  private reconnectTimeout?: NodeJS.Timeout;
+  private isConnected: boolean = false;
 
   constructor(voltage: VoltagePayments, config: NWCConfig) {
     this.voltage = voltage;
@@ -34,32 +36,61 @@ export class NWCService {
    * Initialize the NWC service and start listening for events
    */
   async init(): Promise<void> {
-    // Connect to relay
-    this.relay = await this.pool.ensureRelay(this.config.relayUrl);
+    await this.connectToRelay();
+  }
 
-    // Subscribe to requests
-    this.relay.subscribe([{
-      kinds: [NWCEventKind.REQUEST],
-      '#p': [this.config.pubkey]
-    }], {
-      onevent: async (event: Event) => {
-        try {
-          const decrypted = await nip04.decrypt(
-            Buffer.from(this.config.secret, 'hex'),
-            event.pubkey,
-            event.content
-          );
-          const request: NWCRequest = JSON.parse(decrypted);
-          await this.handleRequest(event, request);
-        } catch (error) {
-          console.error('Error handling request:', error);
-          await this.sendError(event, NWCErrorCode.INTERNAL, 'Internal error processing request');
+  /**
+   * Connect to the relay and set up event handling
+   */
+  private async connectToRelay(): Promise<void> {
+    try {
+      // Connect to relay
+      this.relay = await this.pool.ensureRelay(this.config.relayUrl);
+      this.isConnected = true;
+      console.log('Connected to relay');
+
+      // Subscribe to requests
+      this.relay.subscribe([{
+        kinds: [NWCEventKind.REQUEST],
+        '#p': [this.config.pubkey]
+      }], {
+        onevent: async (event: Event) => {
+          try {
+            const decrypted = await nip04.decrypt(
+              Buffer.from(this.config.secret, 'hex'),
+              event.pubkey,
+              event.content
+            );
+            const request: NWCRequest = JSON.parse(decrypted);
+            await this.handleRequest(event, request);
+          } catch (error) {
+            console.error('Error handling request:', error);
+            await this.sendError(event, NWCErrorCode.INTERNAL, 'Internal error processing request');
+          }
         }
-      }
-    });
+      });
 
-    // Publish info event
-    await this.publishInfoEvent();
+      // Publish info event
+      await this.publishInfoEvent();
+    } catch (error) {
+      console.error('Error connecting to relay:', error);
+      this.isConnected = false;
+      this.scheduleReconnect();
+    }
+  }
+
+  /**
+   * Schedule a reconnection attempt
+   */
+  private scheduleReconnect(): void {
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+    }
+
+    console.log('Scheduling reconnection in 5 seconds...');
+    this.reconnectTimeout = setTimeout(() => {
+      this.connectToRelay();
+    }, 5000);
   }
 
   /**
@@ -118,7 +149,7 @@ export class NWCService {
   }
 
   /**
-   * Send a response event
+   * Send a response event with retry logic
    */
   private async sendResponse(requestEvent: Event, method: string, result: Record<string, any>): Promise<void> {
     const response: NWCResponse = {
@@ -144,12 +175,26 @@ export class NWCService {
     );
 
     if (this.relay) {
-      await this.relay.publish(event);
+      try {
+        await this.relay.publish(event);
+      } catch (error) {
+        console.error('Error sending response:', error);
+        // If the connection is closed, try to reconnect and resend
+        if (error instanceof Error && error.message.includes('closed connection')) {
+          this.isConnected = false;
+          await this.connectToRelay();
+          if (this.relay && this.isConnected) {
+            await this.relay.publish(event);
+          }
+        } else {
+          throw error;
+        }
+      }
     }
   }
 
   /**
-   * Send an error response
+   * Send an error response with retry logic
    */
   private async sendError(requestEvent: Event, code: NWCErrorCode, message: string): Promise<void> {
     const response: NWCResponse = {
@@ -175,7 +220,21 @@ export class NWCService {
     );
 
     if (this.relay) {
-      await this.relay.publish(event);
+      try {
+        await this.relay.publish(event);
+      } catch (error) {
+        console.error('Error sending error response:', error);
+        // If the connection is closed, try to reconnect and resend
+        if (error instanceof Error && error.message.includes('closed connection')) {
+          this.isConnected = false;
+          await this.connectToRelay();
+          if (this.relay && this.isConnected) {
+            await this.relay.publish(event);
+          }
+        } else {
+          throw error;
+        }
+      }
     }
   }
 
