@@ -69,7 +69,7 @@ The wrapper supports the following NIP-47 methods:
 
 - `pay_invoice`: Pay a Lightning invoice
 - `make_invoice`: Create a Lightning invoice
-- `get_balance`: Get wallet balance
+- `get_balance`: Get wallet balance (NOT WORKING)
 - `get_info`: Get wallet information
 
 ## Example Client Usage
